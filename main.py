@@ -40,27 +40,27 @@ main_handler = RotatingFileHandler(
     backupCount=3,
     encoding='utf-8'
 )
-main_handler.setLevel(logging.WARNING)
+main_handler.setLevel(logging.INFO)
 main_handler.setFormatter(file_formatter)
 
-class InfoFilter(logging.Filter):
-    def filter(self, record):
-        return "接口上线" in record.getMessage()
+# class InfoFilter(logging.Filter):
+#     def filter(self, record):
+#         return "接口上线" in record.getMessage()
 
-info_handler = RotatingFileHandler(
-    log_path,
-    maxBytes=max_log_size,
-    backupCount=3,
-    encoding='utf-8'
-)
-info_handler.setLevel(logging.INFO)
-info_handler.addFilter(InfoFilter())
-info_handler.setFormatter(file_formatter)
+# info_handler = RotatingFileHandler(
+#     log_path,
+#     maxBytes=max_log_size,
+#     backupCount=3,
+#     encoding='utf-8'
+# )
+# info_handler.setLevel(logging.INFO)
+# info_handler.addFilter(InfoFilter())
+# info_handler.setFormatter(file_formatter)
 
 # 添加处理器
 logger.addHandler(console_handler)
 logger.addHandler(main_handler)
-logger.addHandler(info_handler)
+# logger.addHandler(info_handler)
 
 # 全局状态跟踪
 event_lock = threading.Lock()
@@ -422,7 +422,7 @@ def enable_config_route(ip_routes: List[RouteEntry], config_routes: List[RouteEn
             # 比较配置优先级与系统记录的优先级
             sys_prio = sys_route_config_map[matched_sys.id]
             if candidate.priority < sys_prio:
-                logger.info(f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})")
+                logger.critical(f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})")
                 remove_routes.append(matched_sys)
                 inject_routes.append(candidate)
             else:
