@@ -57,6 +57,15 @@ main_handler.setFormatter(file_formatter)
 # info_handler.addFilter(InfoFilter())
 # info_handler.setFormatter(file_formatter)
 
+main_handler = RotatingFileHandler(
+    log_path,
+    maxBytes=max_log_size,
+    backupCount=3,
+    encoding='utf-8'
+)
+main_handler.setLevel(logging.INFO)
+main_handler.setFormatter(file_formatter)
+
 # 添加处理器
 logger.addHandler(console_handler)
 logger.addHandler(main_handler)
