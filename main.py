@@ -22,23 +22,20 @@ debug_mode: bool = "-debug" in sys.argv
 
 
 # 初始化日志系统
-logger = logging.getLogger('RouteLogger')
+logger = logging.getLogger("RouteLogger")
 logger.setLevel(logging.DEBUG)  # 根记录器设置为最低级别
 
 # 终端处理器配置（始终带日期）
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)  # 级别控制
-console_format = '%(asctime)s - %(levelname)s - %(message)s'
+console_format = "%(asctime)s - %(levelname)s - %(message)s"
 console_handler.setFormatter(logging.Formatter(console_format))
 
 # 文件处理器配置（保持不变）
-file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 main_handler = RotatingFileHandler(
-    log_path,
-    maxBytes=max_log_size,
-    backupCount=3,
-    encoding='utf-8'
+    log_path, maxBytes=max_log_size, backupCount=3, encoding="utf-8"
 )
 main_handler.setLevel(logging.INFO)
 main_handler.setFormatter(file_formatter)
@@ -58,10 +55,7 @@ main_handler.setFormatter(file_formatter)
 # info_handler.setFormatter(file_formatter)
 
 main_handler = RotatingFileHandler(
-    log_path,
-    maxBytes=max_log_size,
-    backupCount=3,
-    encoding='utf-8'
+    log_path, maxBytes=max_log_size, backupCount=3, encoding="utf-8"
 )
 main_handler.setLevel(logging.INFO)
 main_handler.setFormatter(file_formatter)
@@ -77,7 +71,6 @@ route_status = {}
 ping_warnings = set()
 
 
-
 @dataclass
 class RouteRule:
     type: str
@@ -85,6 +78,16 @@ class RouteRule:
     max_latency_ms: int
     check_interval_sec: int
     ping_address: Optional[str] = None
+
+    def __str__(self) -> str:
+        return (
+            f"RouteRule(type={self.type}, "
+            f"max_packet_loss={self.max_packet_loss}, "
+            f"max_latency_ms={self.max_latency_ms}, "
+            f"check_interval_sec={self.check_interval_sec}, "
+            f"ping_address={self.ping_address})"
+        )
+
 
 @dataclass
 class RouteEntry:
@@ -97,6 +100,20 @@ class RouteEntry:
     proto: Optional[str]
     rule: Optional[RouteRule]
     useable: Optional[bool]
+
+    def __str__(self) -> str:
+        rule_str = str(self.rule) if self.rule else "None"
+        return (
+            f"RouteEntry(id={self.id}, "
+            f"destination={self.destination}, "
+            f"gateway={self.gateway}, "
+            f"interface={self.interface}, "
+            f"metric={self.metric}, "
+            f"priority={self.priority}, "
+            f"proto={self.proto}, "
+            f"rule={rule_str}, "
+            f"useable={self.useable})"
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RouteEntry):
@@ -122,10 +139,14 @@ class RouteEntry:
             return True
 
         cmd = [
-            "ping", "-I", self.interface,
-            "-c", "3",
-            "-W", str(self.rule.max_latency_ms // 1000 or 1),
-            target
+            "ping",
+            "-I",
+            self.interface,
+            "-c",
+            "3",
+            "-W",
+            str(self.rule.max_latency_ms // 1000 or 1),
+            target,
         ]
 
         try:
@@ -135,11 +156,11 @@ class RouteEntry:
                 stderr=subprocess.PIPE,
                 text=True,
                 check=True,
-                timeout=self.rule.check_interval_sec
+                timeout=self.rule.check_interval_sec,
             )
 
             packet_loss, avg_latency = self._parse_ping_output(result.stdout)
-            
+
             meet_condition = True
             if packet_loss > self.rule.max_packet_loss:
                 meet_condition = False
@@ -154,11 +175,13 @@ class RouteEntry:
                     warning_msg.append(f"丢包率 {packet_loss}%")
                 if avg_latency > self.rule.max_latency_ms * 0.8:
                     warning_msg.append(f"延迟 {avg_latency}ms")
-                
+
                 if warning_msg:
                     with event_lock:
                         if warning_key not in ping_warnings:
-                            logger.warning(f"[{self.id}] 网络警告: {'，'.join(warning_msg)}")
+                            logger.warning(
+                                f"[{self.id}] 网络警告: {'，'.join(warning_msg)}"
+                            )
                             ping_warnings.add(warning_key)
                 else:
                     with event_lock:
@@ -188,6 +211,11 @@ class RouteEntry:
             avg_latency = float(latency_match.group(1))
 
         return packet_loss, avg_latency
+
+
+def normalize_dest(dest: str) -> str:
+    return "0.0.0.0/0" if dest == "default" else dest
+
 
 def get_ip_route() -> List[RouteEntry]:
     result = subprocess.run(["ip", "route"], capture_output=True, text=True)
@@ -324,6 +352,7 @@ def remove_route(route: RouteEntry) -> bool:
         logger.error(f"[ERR] 删除路由失败 {route.id}: {error_msg}")
         return False
 
+
 def apply_routes(
     inject_routes: List[RouteEntry],
     existing_routes: List[RouteEntry],
@@ -349,14 +378,17 @@ def apply_routes(
     logger.debug(f"系统已存在 {len(existing_routes)} 条有效路由")
     logger.debug(f"已清理 {len(remove_routes)} 条失效路由")
 
-def enable_config_route(ip_routes: List[RouteEntry], config_routes: List[RouteEntry]) -> None:
+
+def enable_config_route(
+    ip_routes: List[RouteEntry], config_routes: List[RouteEntry]
+) -> None:
     global route_status
 
     # 跟踪状态变化
     for route in config_routes:
         current = route.useable
         previous = route_status.get(route.id, None)
-        
+
         with event_lock:
             if previous is None:
                 route_status[route.id] = current
@@ -373,20 +405,11 @@ def enable_config_route(ip_routes: List[RouteEntry], config_routes: List[RouteEn
 
     # 后续原有路由处理逻辑保持不变...
     # 预处理：建立系统路由与配置路由的映射关系
-    sys_route_config_map:dict[str,int] = {}
+    sys_route_config_map: dict[str, int] = {}
     for sys_route in ip_routes:
         # 查找匹配的配置路由（基于四个核心字段）
-        matched_config = next(
-            (cr for cr in config_routes if
-            #  cr.destination == sys_route.destination and
-            #  cr.gateway == sys_route.gateway and
-            #  cr.interface == sys_route.interface and
-            #  cr.metric == sys_route.metric
-            cr == sys_route
-            ),
-            None
-        )
-        
+        matched_config = next((cr for cr in config_routes if cr == sys_route), None)
+
         # 记录匹配到的配置优先级（未匹配设为0）
         sys_route_config_map[sys_route.id] = (
             matched_config.priority if matched_config else 0
@@ -400,38 +423,49 @@ def enable_config_route(ip_routes: List[RouteEntry], config_routes: List[RouteEn
         destinations2routes[route.destination].append(route)
 
     # 选择可用路由逻辑（保持不变）
-    selected_routes = []
-    failed_routes = []
+    selected_routes: List[RouteEntry] = []
+    failed_routes: List[RouteEntry] = []
     for dest, routes in destinations2routes.items():
-        sorted_routes = sorted(routes, key=lambda x: x.priority)
-        available = [r for r in sorted_routes if r.useable]
+        sorted_routes: List[RouteEntry] = sorted(routes, key=lambda x: x.priority)
+        available: List[RouteEntry] = [r for r in sorted_routes if r.useable]
         if available:
             selected_routes.append(available[0])
         failed_routes.extend(r for r in sorted_routes if not r.useable)
 
     # 路由决策逻辑
-    inject_routes = []
-    remove_routes = []
-    existing_routes = []
+    inject_routes: List[RouteEntry] = []
+    remove_routes: List[RouteEntry] = []
+    existing_routes: List[RouteEntry] = []
 
+    # //// !TODO 这里有逻辑缺失 如果系统路由里存在一个优先级比需要写入的配置优先级低的路由 这个路由不会被删除（这个路由可能是被其他的配置项添加的）
     for candidate in selected_routes:
         # 查找匹配的系统路由
         matched_sys = next(
-            (sr for sr in ip_routes if
-            #  sr.destination == candidate.destination and
-            #  sr.gateway == candidate.gateway and
-            #  sr.interface == candidate.interface and
-            #  sr.metric == candidate.metric
-            sr == candidate
+            (
+                sr
+                for sr in ip_routes
+                if
+                # sr == candidate
+                normalize_dest(sr.destination) == normalize_dest(candidate.destination)
             ),
-            None
+            None,
+        )
+        logger.debug(
+            f"candidate: {candidate}",
         )
 
         if matched_sys:
             # 比较配置优先级与系统记录的优先级
+            logger.debug(f"matched_sys: {matched_sys}")
             sys_prio = sys_route_config_map[matched_sys.id]
+            logger.debug(sys_route_config_map)
+            logger.debug(
+                f"路由匹配: {candidate.id} (新优先级 {candidate.priority} | 旧 {sys_prio})"
+            )
             if candidate.priority < sys_prio:
-                logger.critical(f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})")
+                logger.critical(
+                    f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})"
+                )
                 remove_routes.append(matched_sys)
                 inject_routes.append(candidate)
             else:
@@ -441,16 +475,7 @@ def enable_config_route(ip_routes: List[RouteEntry], config_routes: List[RouteEn
 
     # 处理失效路由
     for failed in failed_routes:
-        matched_sys = next(
-            (sr for sr in ip_routes if
-            #  sr.destination == failed.destination and
-            #  sr.gateway == failed.gateway and
-            #  sr.interface == failed.interface and
-            #  sr.metric == failed.metric
-            sr == failed
-            ),
-            None
-        )
+        matched_sys = next((sr for sr in ip_routes if sr == failed), None)
         if matched_sys and matched_sys not in remove_routes:
             remove_routes.append(matched_sys)
 
@@ -460,14 +485,13 @@ def enable_config_route(ip_routes: List[RouteEntry], config_routes: List[RouteEn
     logger.debug(f"删除路由: {[r.id for r in remove_routes]}")
     logger.debug(f"保留路由: {[r.id for r in existing_routes]}")
     logger.debug(f"失效路由: {[r.id for r in failed_routes]}")
-    
+
     apply_routes(
         inject_routes=inject_routes,
         remove_routes=remove_routes,
-        existing_routes=existing_routes
+        existing_routes=existing_routes,
     )
 
-# 其余原有函数保持不变...
 
 if __name__ == "__main__":
     # 初始化日志状态
@@ -482,4 +506,4 @@ if __name__ == "__main__":
         for route in config_routes:
             route.check_status()
         enable_config_route(ip_routes, config_routes)
-        time.sleep(5)
+        time.sleep(2)
