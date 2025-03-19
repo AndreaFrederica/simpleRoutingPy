@@ -1,4 +1,5 @@
 # encoding:utf-8
+import asyncio
 import time
 import struct
 import socket
@@ -7,6 +8,21 @@ import os
 import platform
 import argparse
 import logging
+from typing import Optional, TypedDict
+
+
+class PingStats(TypedDict):
+    host: str
+    dst_addr: str
+    sent: int
+    received: int
+    lost: int
+    loss_percent: float
+    min_rtt: float
+    max_rtt: float
+    avg_rtt: float
+    rtt_list: list[float]
+
 
 def check_sum(data: bytes) -> int:
     """
@@ -218,6 +234,207 @@ def ping(
     logging.info(f"    数据包: 已发送 = {sent}, 已接收 = {received}, 丢失 = {lost} ({loss_percent:.1f}% 丢失)")
     logging.info("往返行程的估计时间(以毫秒为单位):")
     logging.info(f"    最短 = {min_rtt:.2f}ms, 最长 = {max_rtt:.2f}ms, 平均 = {avg_rtt:.2f}ms")
+
+def ping_with_return(
+    host: str,
+    count: int = 4,
+    payload: bytes = b"abcdefghijklmnopqrstuvwabcdefghi",
+    delay: float = 0.7,
+    iface: Optional[str] = None,
+    quiet: bool = False,
+) -> PingStats:
+    """
+    对指定主机发送 ICMP Echo Request，并返回统计信息的字典。
+
+    返回字典包含如下键：
+        - host: 用户输入的主机名
+        - dst_addr: 解析得到的目标 IP 地址
+        - sent: 发送的包数量
+        - received: 接收到的包数量
+        - lost: 丢失的包数量
+        - loss_percent: 丢包百分比
+        - min_rtt: 最小往返时间（毫秒）
+        - max_rtt: 最大往返时间（毫秒）
+        - avg_rtt: 平均往返时间（毫秒）
+        - rtt_list: 每个成功接收包的往返时间列表（毫秒）
+
+    参数:
+        host (str): 要 ping 的主机名或 IP 地址。
+        count (int): 发送的 ICMP 包数量；若为 0 则无限发送，直到用户中断。
+        payload (bytes): ICMP 数据包的负载数据。
+        delay (float): 每个包发送后的延时，单位为秒。
+        iface (str|None): 指定使用的网络接口（如 "eth0"），仅在支持的系统上有效；
+                          在 Windows 上不支持该功能，会发出警告并忽略此参数。
+        quiet (bool): 是否关闭日志输出（True 表示关闭）。
+
+    返回:
+        PingStats: 包含统计信息的字典。
+    """
+    try:
+        dst_addr = socket.gethostbyname(host)
+    except socket.gaierror as e:
+        err_msg = f"无法解析主机 {host}: {e}"
+        if not quiet:
+            logging.error(err_msg)
+        return PingStats(
+            host=host,
+            dst_addr="",
+            sent=0,
+            received=0,
+            lost=0,
+            loss_percent=0.0,
+            min_rtt=0.0,
+            max_rtt=0.0,
+            avg_rtt=0.0,
+            rtt_list=[],
+        )
+
+    if not quiet:
+        logging.info(f"正在 Ping {host} [{dst_addr}] 具有 {len(payload)} 字节的数据:")
+
+    data_ID = os.getpid() & 0xFFFF
+    data_type = 8         # ICMP Echo Request
+    data_code = 0         # 必须为 0
+    data_checksum = 0     # 校验和初始值为 0
+    data_Sequence = 1
+
+    try:
+        raw_sock = create_raw_socket()  # 此函数需在其它位置定义
+    except PermissionError:
+        err_msg = "需要管理员权限运行此程序"
+        if not quiet:
+            logging.error(err_msg)
+        return PingStats(
+            host=host,
+            dst_addr=dst_addr,
+            sent=0,
+            received=0,
+            lost=0,
+            loss_percent=0.0,
+            min_rtt=0.0,
+            max_rtt=0.0,
+            avg_rtt=0.0,
+            rtt_list=[],
+        )
+
+    if iface:
+        if platform.system() == "Windows":
+            if not quiet:
+                logging.warning("警告: Windows平台不支持指定网络接口功能，将忽略 iface 参数。")
+        else:
+            try:
+                raw_sock.setsockopt(socket.SOL_SOCKET, 25, iface.encode('utf-8'))
+            except Exception as e:
+                err_msg = f"设置网络接口 {iface} 失败: {e}"
+                if not quiet:
+                    logging.error(err_msg)
+                return PingStats(
+                    host=host,
+                    dst_addr=dst_addr,
+                    sent=0,
+                    received=0,
+                    lost=0,
+                    loss_percent=0.0,
+                    min_rtt=0.0,
+                    max_rtt=0.0,
+                    avg_rtt=0.0,
+                    rtt_list=[],
+                )
+
+    sent = 0
+    received = 0
+    rtt_list: list[float] = []
+    iteration = 0
+
+    try:
+        while count == 0 or iteration < count:
+            seq = data_Sequence + iteration
+            icmp_packet = request_ping(data_type, data_code, data_checksum, data_ID, seq, payload)
+            send_time = send_ping(raw_sock, dst_addr, icmp_packet)
+            sent += 1
+            rtt = reply_ping(raw_sock, send_time, seq, timeout=2)
+            if rtt >= 0:
+                if not quiet:
+                    logging.info(f"来自 {dst_addr} 的回复: 字节={len(payload)} 时间={rtt*1000:.2f}ms")
+                received += 1
+                rtt_list.append(rtt * 1000)
+            else:
+                if not quiet:
+                    logging.info("请求超时。")
+            iteration += 1
+            if delay != 0:
+                time.sleep(delay)
+    except KeyboardInterrupt:
+        if not quiet:
+            logging.info("用户中断。")
+
+    lost = sent - received
+    loss_percent = (lost / sent) * 100 if sent > 0 else 0.0
+    if rtt_list:
+        min_rtt = min(rtt_list)
+        max_rtt = max(rtt_list)
+        avg_rtt = sum(rtt_list) / len(rtt_list)
+    else:
+        min_rtt = max_rtt = avg_rtt = 0.0
+
+    return PingStats(
+        host=host,
+        dst_addr=dst_addr,
+        sent=sent,
+        received=received,
+        lost=lost,
+        loss_percent=loss_percent,
+        min_rtt=min_rtt,
+        max_rtt=max_rtt,
+        avg_rtt=avg_rtt,
+        rtt_list=rtt_list,
+    )
+    
+async def async_ping_with_return(
+    host: str,
+    count: int = 4,
+    payload: bytes = b"abcdefghijklmnopqrstuvwabcdefghi",
+    delay: float = 0.7,
+    iface: Optional[str] = None,
+    quiet: bool = False,
+) -> PingStats:
+    """
+    异步封装的 ping_with_return 函数，便于在协程中使用。
+    对指定主机发送 ICMP Echo Request，并返回统计信息的字典。
+
+    返回字典包含如下键：
+        - host: 用户输入的主机名
+        - dst_addr: 解析得到的目标 IP 地址
+        - sent: 发送的包数量
+        - received: 接收到的包数量
+        - lost: 丢失的包数量
+        - loss_percent: 丢包百分比
+        - min_rtt: 最小往返时间（毫秒）
+        - max_rtt: 最大往返时间（毫秒）
+        - avg_rtt: 平均往返时间（毫秒）
+        - rtt_list: 每个成功接收包的往返时间列表（毫秒）
+
+    参数:
+        host (str): 要 ping 的主机名或 IP 地址。
+        count (int): 发送的 ICMP 包数量；若为 0 则无限发送，直到用户中断。
+        payload (bytes): ICMP 数据包的负载数据。
+        delay (float): 每个包发送后的延时，单位为秒。
+        iface (str|None): 指定使用的网络接口（如 "eth0"），仅在支持的系统上有效；
+                          在 Windows 上不支持该功能，会发出警告并忽略此参数。
+        quiet (bool): 是否关闭日志输出（True 表示关闭）。
+
+    返回:
+        PingStats: 包含统计信息的字典。
+    """
+    return await asyncio.to_thread(
+        ping_with_return,
+        host,
+        count,
+        payload,
+        delay,
+        iface,
+        quiet,
+    )
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="类似系统 ping 工具的 Python 版 ICMP ping")
