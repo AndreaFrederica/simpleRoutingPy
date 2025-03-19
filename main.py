@@ -17,6 +17,9 @@ default_config_path = "/etc/config/simplerouting.json"
 log_path = "/tmp/routing.log"
 max_log_size = 5 * 1024 * 1024  # 5MB
 
+# 未匹配的路由优先级
+uncached_priority = 255
+
 # 命令行参数解析
 debug_mode: bool = "-debug" in sys.argv
 
@@ -311,7 +314,7 @@ def add_route(route: RouteEntry) -> bool:
     # 添加metric参数
     if route.metric > 0:
         cmd.extend(["metric", str(route.metric)])
-
+    logger.info(cmd)
     try:
         subprocess.run(
             cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -321,6 +324,31 @@ def add_route(route: RouteEntry) -> bool:
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip()
         logger.error(f"[ERR] 添加路由失败 {route.id}: {error_msg}")
+        if error_msg == "Error: Nexthop has invalid gateway.":
+            try:
+                cmd.remove("via")
+                cmd.remove(str(route.gateway))
+                logger.debug(cmd)
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                logger.critical(f"[OK] 已替换路由: {route.id}")
+                return True
+            except subprocess.CalledProcessError as e:
+                error_msg = e.stderr.strip()
+                # 特殊处理路由不存在的情况
+                if (
+                    "No such process" in error_msg
+                    or "No such file or directory" in error_msg
+                ):
+                    logger.warning(f"[WARN] 路由不存在，尝试新增: {route.id}")
+                    return add_route(route)
+                logger.error(f"[ERR] 第二次尝试替换路由失败 {route.id}: {error_msg}")
+            pass
         return False
 
 
@@ -340,7 +368,7 @@ def remove_route(route: RouteEntry) -> bool:
 
     # 添加设备参数（提升删除准确性）
     cmd.extend(["dev", route.interface])
-
+    logger.info(cmd)
     try:
         subprocess.run(
             cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -353,30 +381,133 @@ def remove_route(route: RouteEntry) -> bool:
         return False
 
 
+def replace_route(new_route: RouteEntry) -> bool:
+    """通过ip route命令替换路由（原子操作）"""
+    # 统一目标地址格式
+    dest = new_route.destination
+    if dest == "default":
+        dest = "0.0.0.0/0"
+
+    # 构建replace命令（支持新增或覆盖）
+    cmd = ["ip", "route", "replace", dest]
+
+    # 添加网关参数
+    if new_route.gateway:
+        cmd.extend(["via", new_route.gateway])
+
+    # 添加设备参数
+    cmd.extend(["dev", new_route.interface])
+
+    # 添加metric参数
+    if new_route.metric > 0:
+        cmd.extend(["metric", str(new_route.metric)])
+        logger.info(cmd)
+    try:
+        result = subprocess.run(
+            cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        logger.critical(f"[OK] 已替换路由: {new_route.id}")
+        return True
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.strip()
+        # 特殊处理路由不存在的情况
+        if "No such process" in error_msg or "No such file or directory" in error_msg:
+            logger.warning(f"[WARN] 路由不存在，尝试新增: {new_route.id}")
+            return add_route(new_route)
+        logger.error(f"[ERR] 替换路由失败 {new_route.id}: {error_msg}")
+        if error_msg == "Error: Nexthop has invalid gateway.":
+            try:
+                cmd.remove("via")
+                cmd.remove(str(new_route.gateway))
+                logger.debug(cmd)
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                logger.critical(f"[OK] 已替换路由: {new_route.id}")
+                return True
+            except subprocess.CalledProcessError as e:
+                error_msg = e.stderr.strip()
+                # 特殊处理路由不存在的情况
+                if (
+                    "No such process" in error_msg
+                    or "No such file or directory" in error_msg
+                ):
+                    logger.warning(f"[WARN] 路由不存在，尝试新增: {new_route.id}")
+                    return add_route(new_route)
+                logger.error(
+                    f"[ERR] 第二次尝试替换路由失败 {new_route.id}: {error_msg}"
+                )
+            pass
+        return False
+
+
 def apply_routes(
     inject_routes: List[RouteEntry],
     existing_routes: List[RouteEntry],
     remove_routes: List[RouteEntry],
 ) -> None:
     """
-    执行实际路由变更操作
-    执行顺序建议：
-    1. 先删除需要移除的路由
-    2. 再添加新路由（避免网络中断）
+    执行实际路由变更操作，优化为优先替换目标地址相同的路由。
+    执行顺序：
+    1. 替换所有需要替换的路由
+    2. 删除剩余需要移除的路由
+    3. 添加剩余需要注入的路由
     """
-    # 删除失效路由
+    replace_inject = []  # 需要替换的新路由列表
+    replace_remove = []  # 被替换的旧路由列表
+
+    # 预处理：识别需要替换的路由对
+    remove_routes_copy = list(remove_routes)
+    inject_routes_copy = list(inject_routes)
+
+    for a in remove_routes_copy:
+        a_dest = normalize_dest(a.destination)
+        for b in inject_routes_copy:
+            b_dest = normalize_dest(b.destination)
+            if a_dest == b_dest:
+                # 记录替换对
+                replace_inject.append(b)
+                replace_remove.append(a)
+                # 从原列表中移除已处理的路由
+                if a in remove_routes:
+                    remove_routes.remove(a)
+                if b in inject_routes:
+                    inject_routes.remove(b)
+                # 防止重复处理
+                inject_routes_copy.remove(b)
+                break
+
+    # 1. 执行替换操作
+    for route in replace_inject:
+        replace_route(route)
+
+    # 2. 删除剩余需要移除的路由
     for route in remove_routes:
         remove_route(route)
 
-    # 注入新路由
+    # 3. 添加剩余需要注入的路由
     for route in inject_routes:
         add_route(route)
 
     # 打印状态报告
     logger.debug("执行结果摘要：")
-    logger.debug(f"成功注入 {len(inject_routes)} 条路由")
+    logger.debug(f"成功替换 {len(replace_inject)} 条路由")
+    logger.debug(f"成功移除 {len(remove_routes)} 条新路由")
+    logger.debug(f"成功注入 {len(inject_routes)} 条新路由")
     logger.debug(f"系统已存在 {len(existing_routes)} 条有效路由")
-    logger.debug(f"已清理 {len(remove_routes)} 条失效路由")
+    logger.debug(
+        f"已清理 {len(remove_routes) + len(replace_remove)} 条失效路由（含替换）"
+    )
+
+    # 记录详细替换信息
+    for old, new in zip(replace_remove, replace_inject):
+        logger.debug(
+            f"路由替换：{old.destination} ({old.gateway}) => {new.destination} ({new.gateway})"
+        )
 
 
 def enable_config_route(
@@ -412,7 +543,7 @@ def enable_config_route(
 
         # 记录匹配到的配置优先级（未匹配设为0）
         sys_route_config_map[sys_route.id] = (
-            matched_config.priority if matched_config else 0
+            matched_config.priority if matched_config else uncached_priority
         )
 
     # 路由分组与处理逻辑（保持不变）
