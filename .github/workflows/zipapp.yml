@@ -21,16 +21,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: cd github.workspace
+      run: |
+        # 确保在项目目录下操作
+        cd ${{ github.workspace }}
+
     - name: Setup Pixi
       uses: prefix-dev/setup-pixi@v0.8.3
       with:
         pixi-version: "v0.41.4"
-
-    - name: Install dependencies
-      run: |
-        # 确保在项目目录下操作
-        cd ${{ github.workspace }}
-        pixi install
 
     - name: Build with fixed filename
       run: |
