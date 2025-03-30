@@ -30,20 +30,6 @@ jobs:
         pixi-version: v0.41.4
         cache: true
 
-    - name: Validate Environment
-      run: |
-        # 验证锁文件状态
-        if ! pixi lock --check; then
-          echo "::error::Lockfile out of sync! Please run 'pixi lock --update' locally"
-          exit 1
-        fi
-
-        # 验证项目结构
-        if [ ! -d "src" ]; then
-          echo "::error::Missing src directory!"
-          exit 1
-        fi
-
     - name: Install Dependencies
       run: pixi install --locked  # 严格锁定依赖版本
 
@@ -53,7 +39,7 @@ jobs:
         rm -rf dist/*
         
         # 执行打包命令（对应 pixi.toml 中的 task）
-        pixi run build
+        pixi run zipapp
         
         # 添加执行权限
         chmod +x dist/*.pyz
@@ -66,7 +52,6 @@ jobs:
       with:
         name: pyz-package
         path: dist/*.pyz
-        retention-days: 3  # 临时保留3天
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
