@@ -32,9 +32,9 @@ jobs:
         
         # 使用 zipapp 打包（根据你的项目结构调整参数）
         python -m zipapp ./src \ # 假设源代码在 src 目录
-          -m "myapp:main" \     # 指定入口点
+          -m "main:main" \     # 指定入口点
           --python "/usr/bin/env python3" \
-          --output dist/myapp-${{ github.ref_name }}.pyz
+          --output dist/simpleRoutingPy-${{ github.ref_name }}.pyz
         
         # 显示打包结果
         ls -lh dist/

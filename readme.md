@@ -40,7 +40,7 @@ mkdir -p /etc/config
 
 ### 获取程序
 ```bash
-wget https://example.com/main.py -O /usr/local/bin/simplerouting
+wget https://example.com/main.pyz -O /usr/local/bin/simplerouting
 chmod +x /usr/local/bin/simplerouting
 ```
 
