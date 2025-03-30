@@ -27,16 +27,11 @@ jobs:
 
     - name: Create zipapp
       run: |
-        # 创建打包目录
         mkdir -p dist
-        
-        # 使用 zipapp 打包（根据你的项目结构调整参数）
-        python -m zipapp ./src \ # 假设源代码在 src 目录
-          -m "main:main" \     # 指定入口点
-          --python "/usr/bin/env python3" \
-          --output dist/simpleRoutingPy-${{ github.ref_name }}.pyz
-        
-        # 显示打包结果
+        python -m zipapp ./src \
+        -m "main:main" \
+        --python "/usr/bin/env python3" \
+        --output dist/simpleRoutingPy-${{ github.ref_name }}.pyz
         ls -lh dist/
 
     - name: Create Release
