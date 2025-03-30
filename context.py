@@ -3,6 +3,7 @@ import threading
 from logging.handlers import RotatingFileHandler
 
 import config
+from config.route_config import load_route_config
 
 event_lock = threading.Lock()
 route_status = {}
@@ -29,6 +30,8 @@ main_handler = RotatingFileHandler(
     backupCount=3,
     encoding='utf-8'
 )
+
+config_routes = load_route_config()
 
 def init(debug_mode:bool)-> None:
     console_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)  # 级别控制
