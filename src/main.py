@@ -5,7 +5,7 @@ from contextlib import suppress
 from config.route_config import load_route_config
 import modules
 from modules.logger import logger
-import context
+import config
 from modules.apply_routing import enable_config_route
 from modules.dataclass import RouteEntry
 from modules.routing import get_ip_route
@@ -84,6 +84,8 @@ async def continuous_route_check():
 async def main_loop():
     """主异步循环"""
     global config_routes
+    logger.info(f"save log file to {config.log_file.file_path_str}")
+    logger.info(f"load config from {config.system_config.file_path_str}")
     config_routes = load_route_config()
     logger.info("load config done")
     
