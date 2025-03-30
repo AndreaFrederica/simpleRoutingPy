@@ -1,4 +1,4 @@
-import ping_ng
+import modules.ping_ng as ping_ng
 import asyncio
 
 async def test() -> None:

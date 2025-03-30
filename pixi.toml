@@ -7,8 +7,8 @@ platforms = ["win-64"]
 version = "0.1.0"
 
 [tasks]
-bundle = { cmd = ["stickytape", "main.py", ">", "dist/bundled.py"] }
-zipapp ={ cmd = ["python", "-m", "zipapp", "main.py", "-m", "\"main:main\""] }
+bundle = { cmd = ["stickytape", "src/main.py", ">", "dist/bundled.py"] }
+zipapp ={ cmd = ["python", "-m", "zipapp", "src", "-m", "\"main:main\"", "-o", "dist/app.pyz"] }
 
 [dependencies]
 python = ">=3.13.2,<3.14"

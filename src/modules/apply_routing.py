@@ -1,10 +1,10 @@
-
 from collections import defaultdict
 import config
 from modules.dataclass import RouteEntry
 from modules.routing import add_route, remove_route, replace_route
 from modules.utilities import normalize_dest
-from context import logger, route_status, event_lock
+from src.context import logger, route_status, event_lock
+
 
 def apply_routes(
     inject_routes: list[RouteEntry],
@@ -60,20 +60,27 @@ def apply_routes(
     logger.debug(f"成功移除 {len(remove_routes)} 条新路由")
     logger.debug(f"成功注入 {len(inject_routes)} 条新路由")
     logger.debug(f"系统已存在 {len(existing_routes)} 条有效路由")
-    logger.debug(f"已清理 {len(remove_routes) + len(replace_remove)} 条失效路由（含替换）")
-    
+    logger.debug(
+        f"已清理 {len(remove_routes) + len(replace_remove)} 条失效路由（含替换）"
+    )
+
     # 记录详细替换信息
     for old, new in zip(replace_remove, replace_inject):
-        logger.debug(f"路由替换：{old.destination} ({old.gateway}) => {new.destination} ({new.gateway})")
+        logger.debug(
+            f"路由替换：{old.destination} ({old.gateway}) => {new.destination} ({new.gateway})"
+        )
 
-def enable_config_route(ip_routes: list[RouteEntry], config_routes: list[RouteEntry]) -> None:
+
+def enable_config_route(
+    ip_routes: list[RouteEntry], config_routes: list[RouteEntry]
+) -> None:
     global route_status
 
     # 跟踪状态变化
     for route in config_routes:
         current = route.useable
         previous = route_status.get(route.id, None)
-        
+
         with event_lock:
             if previous is None:
                 route_status[route.id] = current
@@ -90,16 +97,11 @@ def enable_config_route(ip_routes: list[RouteEntry], config_routes: list[RouteEn
 
     # 后续原有路由处理逻辑保持不变...
     # 预处理：建立系统路由与配置路由的映射关系
-    sys_route_config_map:dict[str,int] = {}
+    sys_route_config_map: dict[str, int] = {}
     for sys_route in ip_routes:
         # 查找匹配的配置路由（基于四个核心字段）
-        matched_config = next(
-            (cr for cr in config_routes if
-            cr == sys_route
-            ),
-            None
-        )
-        
+        matched_config = next((cr for cr in config_routes if cr == sys_route), None)
+
         # 记录匹配到的配置优先级（未匹配设为0）
         sys_route_config_map[sys_route.id] = (
             matched_config.priority if matched_config else config.uncached_priority
@@ -113,8 +115,8 @@ def enable_config_route(ip_routes: list[RouteEntry], config_routes: list[RouteEn
         destinations2routes[route.destination].append(route)
 
     # 选择可用路由逻辑（保持不变）
-    selected_routes:list[RouteEntry] = []
-    failed_routes:list[RouteEntry] = []
+    selected_routes: list[RouteEntry] = []
+    failed_routes: list[RouteEntry] = []
     for dest, routes in destinations2routes.items():
         sorted_routes: list[RouteEntry] = sorted(routes, key=lambda x: x.priority)
         available: list[RouteEntry] = [r for r in sorted_routes if r.useable]
@@ -123,30 +125,39 @@ def enable_config_route(ip_routes: list[RouteEntry], config_routes: list[RouteEn
         failed_routes.extend(r for r in sorted_routes if not r.useable)
 
     # 路由决策逻辑
-    inject_routes:list[RouteEntry] = []
-    remove_routes:list[RouteEntry] = []
-    existing_routes:list[RouteEntry] = []
+    inject_routes: list[RouteEntry] = []
+    remove_routes: list[RouteEntry] = []
+    existing_routes: list[RouteEntry] = []
 
-    #//// !TODO 这里有逻辑缺失 如果系统路由里存在一个优先级比需要写入的配置优先级低的路由 这个路由不会被删除（这个路由可能是被其他的配置项添加的）
+    # //// !TODO 这里有逻辑缺失 如果系统路由里存在一个优先级比需要写入的配置优先级低的路由 这个路由不会被删除（这个路由可能是被其他的配置项添加的）
     for candidate in selected_routes:
         # 查找匹配的系统路由
         matched_sys = next(
-            (sr for sr in ip_routes if
-            # sr == candidate
-            normalize_dest(sr.destination) == normalize_dest(candidate.destination)
+            (
+                sr
+                for sr in ip_routes
+                if
+                # sr == candidate
+                normalize_dest(sr.destination) == normalize_dest(candidate.destination)
             ),
-            None
+            None,
         )
-        logger.debug(f"candidate: {candidate}",)
+        logger.debug(
+            f"candidate: {candidate}",
+        )
 
         if matched_sys:
             # 比较配置优先级与系统记录的优先级
             logger.debug(f"matched_sys: {matched_sys}")
             sys_prio = sys_route_config_map[matched_sys.id]
             logger.debug(sys_route_config_map)
-            logger.debug(f"路由匹配: {candidate.id} (新优先级 {candidate.priority} | 旧 {sys_prio})")
+            logger.debug(
+                f"路由匹配: {candidate.id} (新优先级 {candidate.priority} | 旧 {sys_prio})"
+            )
             if candidate.priority < sys_prio:
-                logger.critical(f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})")
+                logger.critical(
+                    f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})"
+                )
                 remove_routes.append(matched_sys)
                 inject_routes.append(candidate)
             else:
@@ -156,12 +167,7 @@ def enable_config_route(ip_routes: list[RouteEntry], config_routes: list[RouteEn
 
     # 处理失效路由
     for failed in failed_routes:
-        matched_sys = next(
-            (sr for sr in ip_routes if
-            sr == failed
-            ),
-            None
-        )
+        matched_sys = next((sr for sr in ip_routes if sr == failed), None)
         if matched_sys and matched_sys not in remove_routes:
             remove_routes.append(matched_sys)
 
@@ -171,9 +177,9 @@ def enable_config_route(ip_routes: list[RouteEntry], config_routes: list[RouteEn
     logger.debug(f"删除路由: {[r.id for r in remove_routes]}")
     logger.debug(f"保留路由: {[r.id for r in existing_routes]}")
     logger.debug(f"失效路由: {[r.id for r in failed_routes]}")
-    
+
     apply_routes(
         inject_routes=inject_routes,
         remove_routes=remove_routes,
-        existing_routes=existing_routes
+        existing_routes=existing_routes,
     )

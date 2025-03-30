@@ -3,7 +3,7 @@ import sys
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from venv import logger
-import context
+import src.context as context
 from modules.apply_routing import enable_config_route
 from modules.dataclass import RouteEntry
 from modules.routing import get_ip_route

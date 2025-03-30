@@ -1,6 +1,6 @@
 import subprocess
 from modules.dataclass import RouteEntry
-from context import logger
+from src.context import logger
 
 
 def get_ip_route() -> list[RouteEntry]:
@@ -47,9 +47,6 @@ def get_ip_route() -> list[RouteEntry]:
     return routes
 
 
-
-
-
 def add_route(route: RouteEntry) -> bool:
     """通过ip route命令添加路由"""
     # 转换默认路由表示方式
@@ -80,23 +77,27 @@ def add_route(route: RouteEntry) -> bool:
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip()
         logger.error(f"[ERR] 添加路由失败 {route.id}: {error_msg}")
-        if(error_msg == "Error: Nexthop has invalid gateway."):
+        if error_msg == "Error: Nexthop has invalid gateway.":
             try:
-                cmd.remove("via"); cmd.remove(str(route.gateway))
+                cmd.remove("via")
+                cmd.remove(str(route.gateway))
                 logger.debug(cmd)
                 result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
                 )
                 logger.critical(f"[OK] 已替换路由: {route.id}")
                 return True
             except subprocess.CalledProcessError as e:
                 error_msg = e.stderr.strip()
                 # 特殊处理路由不存在的情况
-                if "No such process" in error_msg or "No such file or directory" in error_msg:
+                if (
+                    "No such process" in error_msg
+                    or "No such file or directory" in error_msg
+                ):
                     logger.warning(f"[WARN] 路由不存在，尝试新增: {route.id}")
                     return add_route(route)
                 logger.error(f"[ERR] 第二次尝试替换路由失败 {route.id}: {error_msg}")
@@ -132,6 +133,7 @@ def remove_route(route: RouteEntry) -> bool:
         logger.error(f"[ERR] 删除路由失败 {route.id}: {error_msg}")
         return False
 
+
 def replace_route(new_route: RouteEntry) -> bool:
     """通过ip route命令替换路由（原子操作）"""
     # 统一目标地址格式
@@ -155,11 +157,7 @@ def replace_route(new_route: RouteEntry) -> bool:
         logger.info(cmd)
     try:
         result = subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
         logger.critical(f"[OK] 已替换路由: {new_route.id}")
         return True
@@ -170,25 +168,31 @@ def replace_route(new_route: RouteEntry) -> bool:
             logger.warning(f"[WARN] 路由不存在，尝试新增: {new_route.id}")
             return add_route(new_route)
         logger.error(f"[ERR] 替换路由失败 {new_route.id}: {error_msg}")
-        if(error_msg == "Error: Nexthop has invalid gateway."):
+        if error_msg == "Error: Nexthop has invalid gateway.":
             try:
-                cmd.remove("via"); cmd.remove(str(new_route.gateway))
+                cmd.remove("via")
+                cmd.remove(str(new_route.gateway))
                 logger.debug(cmd)
                 result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
                 )
                 logger.critical(f"[OK] 已替换路由: {new_route.id}")
                 return True
             except subprocess.CalledProcessError as e:
                 error_msg = e.stderr.strip()
                 # 特殊处理路由不存在的情况
-                if "No such process" in error_msg or "No such file or directory" in error_msg:
+                if (
+                    "No such process" in error_msg
+                    or "No such file or directory" in error_msg
+                ):
                     logger.warning(f"[WARN] 路由不存在，尝试新增: {new_route.id}")
                     return add_route(new_route)
-                logger.error(f"[ERR] 第二次尝试替换路由失败 {new_route.id}: {error_msg}")
+                logger.error(
+                    f"[ERR] 第二次尝试替换路由失败 {new_route.id}: {error_msg}"
+                )
             pass
         return False
