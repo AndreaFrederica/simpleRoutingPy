@@ -1,0 +1,17 @@
+[project]
+authors = ["AndreaFrederica <andreafrederica@outlook.com>"]
+channels = ["conda-forge"]
+description = "Add a short description here"
+name = "simpleRoutingPy"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+bundle = { cmd = ["stickytape", "main.py", ">", "dist/bundled.py"] }
+zipapp ={ cmd = ["python", "-m", "zipapp", "main.py", "-m", "\"main:main\""] }
+
+[dependencies]
+python = ">=3.13.2,<3.14"
+
+[pypi-dependencies]
+stickytape = ">=0.2.1, <0.3"
