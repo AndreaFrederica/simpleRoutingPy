@@ -13,6 +13,10 @@ jobs:
     permissions:
       contents: write
 
+    defaults:
+      run:
+        working-directory: ./  # 假设项目根目录是仓库根目录
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -20,14 +24,18 @@ jobs:
     - name: Setup Pixi
       uses: prefix-dev/setup-pixi@v0.8.3
       with:
-        pixi-version: "v0.41.4"  # 添加 v 前缀
+        pixi-version: "v0.41.4"
 
     - name: Install dependencies
       run: |
-        pixi install --platform linux-64
+        # 确保在项目目录下操作
+        cd ${{ github.workspace }}
+        pixi install
 
     - name: Build with fixed filename
       run: |
+        # 明确指定工作目录
+        cd ${{ github.workspace }}
         pixi run zipapp --output "dist/simpleRoutingPy-linux.pyz"
         chmod +x dist/simpleRoutingPy-linux.pyz
         ls -lh dist/
@@ -36,17 +44,13 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: latest-linux-build
-        path: dist/simpleRoutingPy-linux.pyz
+        path: ${{ github.workspace }}/dist/simpleRoutingPy-linux.pyz
         overwrite: true
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          dist/simpleRoutingPy-linux.pyz
+        files: ${{ github.workspace }}/dist/simpleRoutingPy-linux.pyz
         tag_name: ${{ github.ref_name }}
         name: ${{ github.ref_name }}
-        body: |
-          Build SHA: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-        draft: false
