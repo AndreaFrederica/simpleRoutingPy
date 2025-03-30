@@ -30,8 +30,9 @@ async def monitor_route(route: RouteEntry, initial_check_event: asyncio.Event):
     """独立监控单个路由的异步任务（增加首次检查事件参数）"""
     try:
         # 执行首次状态检查
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(executor, route.check_status)
+        # loop = asyncio.get_running_loop()
+        # await loop.run_in_executor(executor, route.check_status)
+        await route.check_status()
         
         # 标记首次检查完成
         initial_check_event.set()
@@ -39,7 +40,8 @@ async def monitor_route(route: RouteEntry, initial_check_event: asyncio.Event):
 
         # 持续监控循环
         while True:
-            await loop.run_in_executor(executor, route.check_status)
+            # await loop.run_in_executor(executor, route.check_status)
+            await route.check_status()
             await asyncio.sleep(1)
     except Exception as e:
         logger.error(f"路由 {route.id} 监控异常: {str(e)}")
@@ -67,7 +69,7 @@ async def continuous_route_check():
                     monitor_route(route, initial_event)
                 )
                 route_tasks[route.id] = task
-                logger.debug(f"已启动路由监控: {route.id}")
+                logger.info(f"已启动路由监控: {route.id}")
 
     # 等待所有路由完成首次检查
     if check_events:
@@ -78,7 +80,6 @@ async def continuous_route_check():
     
     # 触发全局完成事件
     first_check_done_event.set()
-    logger.info("所有路由完成首次状态检查")
 
 async def main_loop():
     """主异步循环"""

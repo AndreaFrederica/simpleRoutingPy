@@ -5,6 +5,7 @@ from typing import Optional
 
 import context as context
 from modules.logger import logger
+from modules.ping_ng import PingStats, async_ping_with_return
 
 @dataclass
 class RouteRule:
@@ -64,7 +65,7 @@ class RouteEntry:
             and self.metric == other.metric
         )
 
-    def check_status(self) -> bool:
+    def check_status_classic(self) -> bool:
         if not self.rule or self.rule.type != "ping":
             return True
 
@@ -128,6 +129,83 @@ class RouteEntry:
             logger.warning(f"[{self.id}] 检测超时")
             self.useable = False
             return False
+
+    async def check_status(self) -> bool:
+        """基于ping_ng.py的异步实现版本"""
+        if not self.rule or self.rule.type != "ping":
+            return True
+
+        # 确定ping目标地址
+        target = self.rule.ping_address or self.gateway
+        if not target:
+            return True
+
+        try:
+            # 执行异步ping检测
+            stats: PingStats = await async_ping_with_return(
+                host=target,
+                count=3,  # 与原逻辑保持一致
+                iface=self.interface,
+                quiet=True,  # 禁止底层日志输出
+                delay=0.5,  # 适当缩短包间隔
+                payload=b"abcdefghijklmnopqrstuvwabcdefghi"  # 32字节负载
+            )
+
+            # 解析网络指标
+            packet_loss = stats["loss_percent"]
+            avg_latency = stats["avg_rtt"]
+
+            # 判断路由可用性
+            meet_condition = True
+            if packet_loss > self.rule.max_packet_loss:
+                meet_condition = False
+            if avg_latency > self.rule.max_latency_ms:
+                meet_condition = False
+
+            # 网络状况警告处理
+            self._handle_network_warnings(packet_loss, avg_latency, meet_condition)
+
+            # 更新路由状态
+            self.useable = meet_condition
+            return meet_condition
+
+        except Exception as e:
+            logger.error(f"[{self.id}] Ping检测异常: {str(e)}")
+            self.useable = False
+            return False
+
+    def _handle_network_warnings(self, 
+                               packet_loss: float, 
+                               avg_latency: float,
+                               meet_condition: bool) -> None:
+        """统一处理网络警告逻辑"""
+        warning_key = f"{self.id}_net_warning"
+        
+        # 当路由可用时检查潜在风险
+        if meet_condition:
+            warning_msg = []
+            if packet_loss > 0:
+                warning_msg.append(f"丢包率 {packet_loss}%")
+            if avg_latency > self.rule.max_latency_ms * 0.8: # type: ignore 目前需要网络检查的时候这个肯定有的
+                warning_msg.append(f"延迟 {avg_latency}ms")
+
+            # 需要记录警告的情况
+            if warning_msg:
+                with context.event_lock:
+                    if warning_key not in context.ping_warnings:
+                        logger.warning(f"[{self.id}] 网络警告: {'，'.join(warning_msg)}")
+                        context.ping_warnings.add(warning_key)
+            # 恢复情况处理
+            else:
+                with context.event_lock:
+                    if warning_key in context.ping_warnings:
+                        logger.info(f"[{self.id}] 网络状况恢复")
+                        context.ping_warnings.remove(warning_key)
+        # 路由不可用时清除警告
+        else:
+            with context.event_lock:
+                if warning_key in context.ping_warnings:
+                    context.ping_warnings.remove(warning_key)
 
     def _parse_ping_output(self, output: str) -> tuple[float, float]:
         packet_loss = 100.0
