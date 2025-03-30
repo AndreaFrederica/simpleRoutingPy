@@ -1,41 +1,84 @@
-name: Project CI
+name: Build Python Zipped App
 
 on:
   push:
-    branches: [main]
-    tags: [v*]
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: ["main"]
 
-env:
-  PROJECT_DIR: ./
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: ${{ github.workspace }}  # 确保在项目根目录执行
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       with:
-        path: ${{ env.PROJECT_DIR }}
+        fetch-depth: 0  # 获取完整提交历史
 
     - name: Setup Pixi
       uses: prefix-dev/setup-pixi@v0.8.3
       with:
-        pixi-version: "v0.41.4"
-        manifest-path: ${{ env.PROJECT_DIR }}/pixi.toml
+        pixi-version: "v0.41.4"  # 指定 pixi 版本
+        manifest-path: ./pixi.toml  # 显式指向根目录的配置文件
 
-    - name: Install dependencies
-      run: pixi install --locked
+    - name: Validate Environment
+      run: |
+        # 验证锁文件状态
+        if ! pixi lock --check; then
+          echo "::error::Lockfile out of sync! Please run 'pixi lock --update' locally"
+          exit 1
+        fi
 
-    - name: Build project
-      run: pixi run build
+        # 验证项目结构
+        if [ ! -d "src" ]; then
+          echo "::error::Missing src directory!"
+          exit 1
+        fi
 
-    - name: Upload artifacts
+    - name: Install Dependencies
+      run: pixi install --locked  # 严格锁定依赖版本
+
+    - name: Build Package
+      run: |
+        # 清空旧构建结果
+        rm -rf dist/*
+        
+        # 执行打包命令（对应 pixi.toml 中的 task）
+        pixi run build
+        
+        # 添加执行权限
+        chmod +x dist/*.pyz
+        
+        # 显示构建结果
+        ls -lh dist/
+
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: release-pkg
-        path: ${{ env.PROJECT_DIR }}/dist/*
+        name: pyz-package
+        path: dist/*.pyz
+        retention-days: 3  # 临时保留3天
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*.pyz
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+        body: |
+          ### Python Zipped Application
+          - Build Date: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          - Commit: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+          - Pixi Version: 0.41.4
+        draft: false
+        prerelease: false
