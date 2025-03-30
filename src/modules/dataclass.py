@@ -3,8 +3,8 @@ import re
 import subprocess
 from typing import Optional
 
-import src.context as context
-from src.context import logger
+import context as context
+from modules.logger import logger
 
 @dataclass
 class RouteRule:
@@ -114,7 +114,7 @@ class RouteEntry:
                 else:
                     with context.event_lock:
                         if warning_key in context.ping_warnings:
-                            context.logger.warning(f"[{self.id}] 网络状况恢复")
+                            logger.warning(f"[{self.id}] 网络状况恢复")
                             context.ping_warnings.remove(warning_key)
 
             self.useable = meet_condition

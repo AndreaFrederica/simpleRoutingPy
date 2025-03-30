@@ -3,7 +3,7 @@ from . import models
 
 
 system_config = models.AppPathResolver(
-    app_name="SimpleRouting",
+    app_name=None,
     file_name="simplerouting.json",
     sub_dir="config"
 )

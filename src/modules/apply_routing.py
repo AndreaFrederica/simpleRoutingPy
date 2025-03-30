@@ -3,7 +3,8 @@ import config
 from modules.dataclass import RouteEntry
 from modules.routing import add_route, remove_route, replace_route
 from modules.utilities import normalize_dest
-from src.context import logger, route_status, event_lock
+from context import route_status, event_lock
+from modules.logger import logger
 
 
 def apply_routes(

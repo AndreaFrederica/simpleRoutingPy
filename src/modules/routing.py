@@ -1,6 +1,6 @@
 import subprocess
 from modules.dataclass import RouteEntry
-from src.context import logger
+from modules.logger import logger
 
 
 def get_ip_route() -> list[RouteEntry]:

@@ -6,13 +6,14 @@ import time
 from typing import Optional
 import uuid
 
+
 class AppPathResolver:
     def __init__(
         self,
-        app_name: str,
+        app_name: str | None,
         file_name: str,
         sub_dir: Optional[str] = None,
-        linux_system_wide: bool = True
+        linux_system_wide: bool = True,
     ):
         """
         跨平台应用路径解析器（仅生成路径，不处理读写）
@@ -22,7 +23,7 @@ class AppPathResolver:
         :param sub_dir: 可选的子目录（如"settings"）
         :param linux_system_wide: 是否在Linux下使用系统级路径（默认为True）
         """
-        self._app_name = app_name
+        self._app_name: str | None = app_name
         self._file_name = file_name
         self._sub_dir = sub_dir
         self._linux_system_wide = linux_system_wide
@@ -39,13 +40,22 @@ class AppPathResolver:
             appdata_dir = os.getenv("APPDATA")
             if not appdata_dir:
                 appdata_dir = Path.home() / "AppData" / "Roaming"
-            return Path(appdata_dir) / self._app_name
+            if self._app_name:
+                return Path(appdata_dir) / self._app_name
+            else:
+                return Path(appdata_dir)
         else:
             # Linux/macOS: 系统级或用户级路径
             if self._linux_system_wide:
-                return Path("/etc") / self._app_name
+                if self._app_name:
+                    return Path("/etc") / self._app_name
+                else:
+                    return Path("/etc")
             else:
-                return Path.home() / ".config" / self._app_name
+                if self._app_name:
+                    return Path.home() / ".config" / self._app_name
+                else:
+                    return Path.home() / ".config"
 
     def _build_full_dir(self) -> Path:
         """构建完整目录路径"""
@@ -88,7 +98,7 @@ class TemporaryPathResolver:
         file_name: Optional[str] = None,
         sub_dir: Optional[str] = None,
         use_system_temp_dir: bool = True,
-        auto_generate_filename: bool = False
+        auto_generate_filename: bool = False,
     ):
         """
         跨平台临时文件路径解析器
@@ -119,7 +129,10 @@ class TemporaryPathResolver:
             # 手动指定操作系统默认临时目录（非Python标准）
             if sys.platform.startswith("win"):
                 # Windows: LocalAppData/Temp
-                local_temp = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Temp"
+                local_temp = (
+                    Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+                    / "Temp"
+                )
                 return local_temp / self._app_name
             else:
                 # Linux/macOS: /tmp
@@ -140,7 +153,7 @@ class TemporaryPathResolver:
             return self._full_dir / self._file_name
         elif self._auto_generate_filename:
             # 自动生成唯一文件名（UUID + 时间戳）
-            unique_id = f"{uuid.uuid4().hex}_{int(time.time()*1000)}"
+            unique_id = f"{uuid.uuid4().hex}_{int(time.time() * 1000)}"
             return self._full_dir / f"temp_{unique_id}.tmp"
         else:
             # 返回目录路径（当不需要具体文件时）
@@ -155,6 +168,7 @@ class TemporaryPathResolver:
     def file_path(self) -> Path:
         """返回临时文件完整路径"""
         return self._file_path
+
     @property
     def directory_str(self) -> str:
         """返回配置目录路径（只读）"""

@@ -8,7 +8,7 @@ version = "0.1.0"
 
 [tasks]
 bundle = { cmd = ["stickytape", "src/main.py", ">", "dist/bundled.py"] }
-zipapp ={ cmd = ["python", "-m", "zipapp", "src", "-m", "\"main:main\"", "-o", "dist/app.pyz"] }
+zipapp ={ cmd = ["python", "-m", "zipapp", "src", "-m", "\"main:main\"", "-o", "dist/simpleRoutingPy.pyz"] }
 
 [dependencies]
 python = ">=3.13.2,<3.14"
