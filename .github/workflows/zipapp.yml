@@ -1,47 +1,56 @@
-name: Build and Release
+name: Stable Filename Build
 
 on:
   push:
-    tags:
-      - "v*" # 当推送 v 开头的 tag 时触发
+    branches: ["main", "master"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main", "master"]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 允许写入 Release
+      contents: write
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Setup Pixi
+      uses: prefix-dev/setup-pixi@v0.7.0
       with:
-        python-version: '3.x' # 根据你的需要指定版本
+        pixi-version: "0.14.0"
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pixi install --platform linux-64
 
-    - name: Create zipapp
+    - name: Build with fixed filename
       run: |
-        mkdir -p dist
-        python -m zipapp ./src \
-        -m "main:main" \
-        --python "/usr/bin/env python3" \
-        --output dist/simpleRoutingPy-linux.pyz
+        # 始终使用相同文件名
+        pixi run zipapp --output "dist/simpleRoutingPy-linux.pyz"
+        
+        # 添加执行权限
+        chmod +x dist/simpleRoutingPy-linux.pyz
         ls -lh dist/
 
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: latest-linux-build
+        path: dist/simpleRoutingPy-linux.pyz
+        overwrite: true  # 允许覆盖旧文件
+
     - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          dist/*.pyz
-        tag_name: ${{ github.ref }}
-        name: Release ${{ github.ref_name }}
+          dist/simpleRoutingPy-linux.pyz
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
         body: |
-          Single-file executable built with zipapp
+          Latest stable build (always same filename)
+          SHA: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
         draft: false
-        prerelease: false

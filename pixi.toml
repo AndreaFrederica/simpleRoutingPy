@@ -3,15 +3,14 @@ authors = ["AndreaFrederica <andreafrederica@outlook.com>"]
 channels = ["conda-forge"]
 description = "Add a short description here"
 name = "simpleRoutingPy"
-platforms = ["win-64"]
+platforms = ["win-64","linux-64"]
 version = "0.1.0"
 
 [tasks]
-bundle = { cmd = ["stickytape", "src/main.py", ">", "dist/bundled.py"] }
 zipapp ={ cmd = ["python", "-m", "zipapp", "src", "-m", "\"main:main\"", "-o", "dist/simpleRoutingPy.pyz"] }
 
 [dependencies]
 python = ">=3.13.2,<3.14"
 
 [pypi-dependencies]
-stickytape = ">=0.2.1, <0.3"
+#stickytape = ">=0.2.1, <0.3"
