@@ -31,7 +31,7 @@ jobs:
         python -m zipapp ./src \
         -m "main:main" \
         --python "/usr/bin/env python3" \
-        --output dist/simpleRoutingPy-${{ github.ref_name }}.pyz
+        --output dist/simpleRoutingPy-linux.pyz
         ls -lh dist/
 
     - name: Create Release
