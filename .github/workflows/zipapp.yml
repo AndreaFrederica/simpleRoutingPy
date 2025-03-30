@@ -1,0 +1,52 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*" # 当推送 v 开头的 tag 时触发
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允许写入 Release
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x' # 根据你的需要指定版本
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Create zipapp
+      run: |
+        # 创建打包目录
+        mkdir -p dist
+        
+        # 使用 zipapp 打包（根据你的项目结构调整参数）
+        python -m zipapp ./src \ # 假设源代码在 src 目录
+          -m "myapp:main" \     # 指定入口点
+          --python "/usr/bin/env python3" \
+          --output dist/myapp-${{ github.ref_name }}.pyz
+        
+        # 显示打包结果
+        ls -lh dist/
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/*.pyz
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref_name }}
+        body: |
+          Single-file executable built with zipapp
+        draft: false
+        prerelease: false
