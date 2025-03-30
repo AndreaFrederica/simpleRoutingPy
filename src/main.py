@@ -20,74 +20,101 @@ config_routes: list[RouteEntry]
 
 # 存储每个路由的检查任务和状态
 route_tasks: dict[str, asyncio.Task] = {}
-route_status: dict[str, bool] = {}
+route_initial_checks: dict[str, asyncio.Event] = {}  # 新增路由级首次检查事件
 route_lock = asyncio.Lock()
 
 # 首次检查完成事件
 first_check_done_event = asyncio.Event()
 
+async def monitor_route(route: RouteEntry, initial_check_event: asyncio.Event):
+    """独立监控单个路由的异步任务（增加首次检查事件参数）"""
+    try:
+        # 执行首次状态检查
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(executor, route.check_status)
+        
+        # 标记首次检查完成
+        initial_check_event.set()
+        logger.debug(f"路由 {route.id} 首次检查完成")
 
-async def async_check_route(route: RouteEntry) -> bool:
-    """异步执行路由检查"""
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(executor, route.check_status)
-
+        # 持续监控循环
+        while True:
+            await loop.run_in_executor(executor, route.check_status)
+            await asyncio.sleep(1)
+    except Exception as e:
+        logger.error(f"路由 {route.id} 监控异常: {str(e)}")
+        initial_check_event.set()  # 确保异常时也能触发事件
+        raise
 
 async def continuous_route_check():
-    """持续运行的路由检查任务"""
-    global config_routes
-    first_run = True
+    """启动所有路由的独立监控任务并等待首次检查"""
+    global config_routes, route_tasks, route_initial_checks
+    
+    # 创建事件对象集合
+    check_events = []
 
-    while True:
-        # 获取当前配置的副本以避免检查过程中配置变更
-        with context.event_lock:
-            current_routes = list(config_routes)
+    async with route_lock:
+        # 初始化路由监控任务
+        for route in config_routes:
+            if route.id not in route_tasks:
+                # 为每个路由创建专属首次检查事件
+                initial_event = asyncio.Event()
+                route_initial_checks[route.id] = initial_event
+                check_events.append(initial_event)
+                
+                # 创建监控任务并传递事件对象
+                task = asyncio.create_task(
+                    monitor_route(route, initial_event)
+                )
+                route_tasks[route.id] = task
+                logger.debug(f"已启动路由监控: {route.id}")
 
-        # 批量检查所有路由
-        tasks = [async_check_route(route) for route in current_routes]
-        await asyncio.gather(*tasks)
-
-        # 首次检查完成后触发事件
-        if first_run:
-            first_check_done_event.set()
-            first_run = False
-
-        # 按需调整检查间隔
-        await asyncio.sleep(1)
-
+    # 等待所有路由完成首次检查
+    if check_events:
+        await asyncio.gather(
+            *[event.wait() for event in check_events],
+            return_exceptions=True  # 防止单个路由失败阻塞整体
+        )
+    
+    # 触发全局完成事件
+    first_check_done_event.set()
+    logger.info("所有路由完成首次状态检查")
 
 async def main_loop():
     """主异步循环"""
     global config_routes
     config_routes = load_route_config()
     logger.info("load config done")
-
-    # 启动后台检查任务
-    check_task = asyncio.create_task(continuous_route_check())
-    logger.info("create check_task")
-
+    
+    # 启动所有路由的监控任务
+    await continuous_route_check()
+    
     try:
-        # 等待首次路由检查完成
+        # 等待首次检查完成
         await first_check_done_event.wait()
-        logger.info("First route check completed. Start applying routes.")
-
+        logger.info("First check completed. Start applying routes.")
+        
         while True:
-            # 获取当前路由表并应用配置（无需等待后续检查）
+            # 获取当前路由表
             logger.debug("try get system route table")
             ip_routes = get_ip_route()
             logger.debug(f"System route table\n{ip_routes}")
-
-            with context.event_lock:
+            
+            # 应用路由配置（使用最新检查状态）
+            async with route_lock:
                 enable_config_route(ip_routes, config_routes)
-
+            
             # 控制主循环频率
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         logger.info("Received exit signal, shutting down...")
     finally:
-        check_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await check_task
+        # 取消所有路由监控任务
+        async with route_lock:
+            for task in route_tasks.values():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await asyncio.gather(*route_tasks.values())
 
 
 def main():
