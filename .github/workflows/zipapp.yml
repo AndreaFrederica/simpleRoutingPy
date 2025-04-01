@@ -27,7 +27,7 @@ jobs:
         fetch-depth: 0  # 获取完整提交历史
 
     - name: 设置 Pixi
-      uses: prefix-dev/setup-pixi@v0.8.3
+      uses: prefix-dev/setup-pixi@v0.8.4
       with:
         pixi-version: v0.41.4
         cache: true
