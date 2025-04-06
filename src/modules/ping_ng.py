@@ -22,6 +22,7 @@ class PingStats(TypedDict):
     max_rtt: float
     avg_rtt: float
     rtt_list: list[float]
+    failed: bool
 
 
 def check_sum(data: bytes) -> int:
@@ -270,6 +271,7 @@ def ping_with_return(
     返回:
         PingStats: 包含统计信息的字典。
     """
+    failed = False
     try:
         dst_addr = socket.gethostbyname(host)
     except socket.gaierror as e:
@@ -287,6 +289,7 @@ def ping_with_return(
             max_rtt=0.0,
             avg_rtt=0.0,
             rtt_list=[],
+            failed=True
         )
 
     if not quiet:
@@ -315,6 +318,7 @@ def ping_with_return(
             max_rtt=0.0,
             avg_rtt=0.0,
             rtt_list=[],
+            failed=True
         )
 
     if iface:
@@ -339,6 +343,7 @@ def ping_with_return(
                     max_rtt=0.0,
                     avg_rtt=0.0,
                     rtt_list=[],
+                    failed=True
                 )
 
     sent = 0
@@ -388,6 +393,7 @@ def ping_with_return(
         max_rtt=max_rtt,
         avg_rtt=avg_rtt,
         rtt_list=rtt_list,
+        failed=failed
     )
     
 async def async_ping_with_return(

@@ -100,10 +100,10 @@ def enable_config_route(
     # 预处理：建立系统路由与配置路由的映射关系
     sys_route_config_map: dict[str, int] = {}
     for sys_route in ip_routes:
-        # 查找匹配的配置路由（基于四个核心字段）
+        # 查找匹配的配置路由
         matched_config = next((cr for cr in config_routes if cr == sys_route), None)
 
-        # 记录匹配到的配置优先级（未匹配设为0）
+        # 记录匹配到的配置优先级
         sys_route_config_map[sys_route.id] = (
             matched_config.priority if matched_config else config.uncached_priority
         )
@@ -129,28 +129,26 @@ def enable_config_route(
     inject_routes: list[RouteEntry] = []
     remove_routes: list[RouteEntry] = []
     existing_routes: list[RouteEntry] = []
-
     # //// !TODO 这里有逻辑缺失 如果系统路由里存在一个优先级比需要写入的配置优先级低的路由 这个路由不会被删除（这个路由可能是被其他的配置项添加的）
     for candidate in selected_routes:
         # 查找匹配的系统路由
-        matched_sys = next(
-            (
-                sr
-                for sr in ip_routes
-                if
-                # sr == candidate
-                normalize_dest(sr.destination) == normalize_dest(candidate.destination)
-            ),
-            None,
-        )
+        matched_sys_list: list[RouteEntry] = [
+            sr
+            for sr in ip_routes
+            if normalize_dest(sr.destination) == normalize_dest(candidate.destination)
+            and (True if config.ignore_protocal else (sr.proto == candidate.proto))
+        ]
+
+        
         logger.debug(
             f"candidate: {candidate}",
         )
-
-        if matched_sys:
-            # 比较配置优先级与系统记录的优先级
-            logger.debug(f"matched_sys: {matched_sys}")
-            sys_prio = sys_route_config_map[matched_sys.id]
+        logger.debug(f"matched_sys_list{matched_sys_list}")
+        if matched_sys_list:
+            # 选择优先级最低（数值最小）的匹配作为最佳匹配
+            best_sys = min(matched_sys_list, key=lambda sr: sys_route_config_map[sr.id])
+            sys_prio = sys_route_config_map[best_sys.id]
+            logger.debug(f"best_sys: {best_sys}")
             logger.debug(sys_route_config_map)
             logger.debug(
                 f"路由匹配: {candidate.id} (新优先级 {candidate.priority} | 旧 {sys_prio})"
@@ -159,7 +157,7 @@ def enable_config_route(
                 logger.critical(
                     f"路由更新: {candidate.id} (新优先级 {candidate.priority} < 旧 {sys_prio})"
                 )
-                remove_routes.append(matched_sys)
+                remove_routes.append(best_sys)
                 inject_routes.append(candidate)
             else:
                 existing_routes.append(candidate)
@@ -168,9 +166,13 @@ def enable_config_route(
 
     # 处理失效路由
     for failed in failed_routes:
-        matched_sys = next((sr for sr in ip_routes if sr == failed), None)
-        if matched_sys and matched_sys not in remove_routes:
-            remove_routes.append(matched_sys)
+        matched_fa_sys_list: list[RouteEntry] = [sr for sr in ip_routes if sr == failed]
+        logger.debug(f"matched_fa_sys_list={matched_fa_sys_list}")
+        if matched_fa_sys_list:
+            for sr in matched_fa_sys_list:
+                if sr not in remove_routes:
+                    remove_routes.append(sr)
+
 
     # 执行路由变更
     logger.debug("路由变更计划:")

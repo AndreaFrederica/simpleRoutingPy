@@ -163,6 +163,8 @@ class RouteEntry:
                 meet_condition = False
             if avg_latency > self.rule.max_latency_ms:
                 meet_condition = False
+            if stats["failed"]:
+                meet_condition = False
 
             # 网络状况警告处理
             self._handle_network_warnings(packet_loss, avg_latency, meet_condition)

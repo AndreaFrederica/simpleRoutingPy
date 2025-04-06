@@ -6,6 +6,3 @@ app_protocals:dict[str,int] = {
     "static" : 235,
 }
 #! 最大注册的协议号是254
-
-#? 核验路由的协议
-protocal_cheak:bool = True

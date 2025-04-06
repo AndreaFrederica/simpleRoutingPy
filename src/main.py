@@ -43,6 +43,7 @@ async def monitor_route(route: RouteEntry, initial_check_event: asyncio.Event):
         initial_check_event.set()
         logger.debug(f"路由 {route.id} 首次检查完成")
         prev_status: bool | None = route.useable  # 保存初始状态
+        interface_change_event.set()
         # 持续监控循环
         while True:
             await route.check_status()
@@ -101,6 +102,7 @@ async def main_loop():
             # 控制主循环频率
             # await asyncio.sleep(1)
             await interface_change_event.wait()
+            interface_change_event.clear()
             # 获取当前路由表
             logger.debug("try get system route table")
             ip_routes = get_ip_route()

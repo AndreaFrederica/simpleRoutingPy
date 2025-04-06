@@ -1,8 +1,8 @@
-import modules.ping_ng as ping_ng
+from modules import ping_ng
 import asyncio
 
 async def test() -> None:
-    rsp = await ping_ng.async_ping_with_return(host="192.168.202.1", count=10, delay=0)
+    rsp = await ping_ng.async_ping_with_return(host="192.168.202.1", count=10, delay=0,iface="eth5")
     print(rsp)
 
 if __name__ == "__main__":

@@ -31,6 +31,12 @@ def get_ip_route() -> list[RouteEntry]:
 
         if "proto" in parts:
             proto = parts[parts.index("proto") + 1]
+            if proto.isdigit():
+                proto_int = int(proto)
+                if(proto_int in config.app_protocals.values()):
+                    proto = config.proro_int2name[proto_int]
+                else:
+                    ...
 
         if iface:
             routes.append(
@@ -84,6 +90,7 @@ def add_route(route: RouteEntry) -> bool:
         cmd.extend(["metric", str(route.metric)])
     logger.info(cmd)
     try:
+        logger.debug(f"cmd={str(cmd)}")
         subprocess.run(
             cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -96,7 +103,7 @@ def add_route(route: RouteEntry) -> bool:
             try:
                 cmd.remove("via")
                 cmd.remove(str(route.gateway))
-                logger.debug(cmd)
+                logger.debug(f"cmd={str(cmd)}")
                 result = subprocess.run(
                     cmd,
                     check=True,
@@ -138,6 +145,7 @@ def remove_route(route: RouteEntry) -> bool:
     cmd.extend(["dev", route.interface])
     logger.info(cmd)
     try:
+        logger.debug(f"cmd={str(cmd)}")
         subprocess.run(
             cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -182,6 +190,7 @@ def replace_route(new_route: RouteEntry) -> bool:
         cmd.extend(["metric", str(new_route.metric)])
         logger.info(cmd)
     try:
+        logger.debug(f"cmd={str(cmd)}")
         result = subprocess.run(
             cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -198,7 +207,7 @@ def replace_route(new_route: RouteEntry) -> bool:
             try:
                 cmd.remove("via")
                 cmd.remove(str(new_route.gateway))
-                logger.debug(cmd)
+                logger.debug(f"cmd={str(cmd)}")
                 result = subprocess.run(
                     cmd,
                     check=True,
@@ -262,6 +271,6 @@ def clean() -> None:
             if(route.proto == str(config.app_protocal)):
                 remove_route(route)
                 logger.critical(f"已清理{route}")
-            if(route.proto in list(map(str, config.app_protocals.items()))):
+            if(route.proto in list(map(str, config.app_protocals.keys()))):
                 remove_route(route)
                 logger.critical(f"已清理{route}")
