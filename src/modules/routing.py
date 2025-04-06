@@ -1,4 +1,8 @@
+import re
 import subprocess
+from typing import Optional
+import config
+import config.protocal
 from modules.dataclass import RouteEntry
 from modules.logger import logger
 
@@ -63,6 +67,17 @@ def add_route(route: RouteEntry) -> bool:
 
     # 添加设备参数
     cmd.extend(["dev", route.interface])
+
+    # 添加app自己的协议号
+    if(route.proto):
+        if(route.proto in config.app_protocals.keys()):
+            cmd.extend(["protocol" , str(config.app_protocals[route.proto])])
+        else:
+            #?缺省值
+            cmd.extend(["protocol" , str(config.app_protocal)])
+    else:
+        #?缺省值
+        cmd.extend(["protocol" , str(config.app_protocal)])
 
     # 添加metric参数
     if route.metric > 0:
@@ -150,6 +165,17 @@ def replace_route(new_route: RouteEntry) -> bool:
 
     # 添加设备参数
     cmd.extend(["dev", new_route.interface])
+    
+    # 添加app自己的协议号
+    if(new_route.proto):
+        if(new_route.proto in config.app_protocals.keys()):
+            cmd.extend(["protocol" , str(config.app_protocals[new_route.proto])])
+        else:
+            #?缺省值
+            cmd.extend(["protocol" , str(config.app_protocal)])
+    else:
+        #?缺省值
+        cmd.extend(["protocol" , str(config.app_protocal)])
 
     # 添加metric参数
     if new_route.metric > 0:
@@ -196,3 +222,46 @@ def replace_route(new_route: RouteEntry) -> bool:
                 )
             pass
         return False
+
+def get_interface_gateway(iface: str) -> Optional[str]:
+    """
+    获取指定接口的网关地址。如果存在 "default via ..." 则返回 default 的网关，
+    否则返回第一行的目的地址（例如 "10.148.64.1"）。
+    如果命令执行失败或没有匹配到，返回 None。
+    """
+    try:
+        output = subprocess.check_output(
+            ["ip", "route", "show", "dev", iface],
+            encoding="utf-8"
+        )
+    except subprocess.CalledProcessError:
+        return None
+
+    # 按行解析输出
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        # 如果行以 "default via" 开头
+        m = re.search(r"default via (\S+)", line)
+        if m:
+            return m.group(1)
+        else:
+            # 如果不是 default 路由，则假定第一段是网关/目的地址
+            tokens = line.split()
+            if tokens:
+                return tokens[0]
+    return None
+
+def clean() -> None:
+    """清理所有自己产生的路由规则"""
+    routes: list[RouteEntry] = get_ip_route()
+    if config.clean_when_exit:
+        for route in routes:
+            if(route.proto == str(config.app_protocal)):
+                remove_route(route)
+                logger.critical(f"已清理{route}")
+            if(route.proto in list(map(str, config.app_protocals.items()))):
+                remove_route(route)
+                logger.critical(f"已清理{route}")

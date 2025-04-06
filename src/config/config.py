@@ -1,4 +1,3 @@
-from ast import mod
 from . import models
 
 
@@ -12,3 +11,9 @@ log_file = models.TemporaryPathResolver(
     file_name="simplerouting.log",
     sub_dir="log"
 )
+
+#? 路由验证规则
+ignore_protocal:bool = False
+
+#? 退出时清理路由
+clean_when_exit:bool = False

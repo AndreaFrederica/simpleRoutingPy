@@ -13,4 +13,5 @@ zipapp ={ cmd = ["python", "-m", "zipapp", "src", "-m", "\"main:main\"", "-o", "
 python = ">=3.13.2,<3.14"
 
 [pypi-dependencies]
+pyroute2 = ">=0.9.1, <0.10"
 #stickytape = ">=0.2.1, <0.3"

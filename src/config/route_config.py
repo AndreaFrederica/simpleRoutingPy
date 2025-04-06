@@ -1,5 +1,6 @@
 import json
 import os
+import modules
 import config
 from modules.dataclass import RouteEntry, RouteRule
 
@@ -17,8 +18,7 @@ def load_route_config(file_path: str = config.system_config.file_path_str) -> li
     routes = []
     for entry in config:
         rule = RouteRule(**entry["rule"]) if "rule" in entry else None
-        routes.append(
-            RouteEntry(
+        route = RouteEntry(
                 id=entry["id"],
                 destination=entry["route"],
                 gateway=entry.get("gateway"),
@@ -29,6 +29,9 @@ def load_route_config(file_path: str = config.system_config.file_path_str) -> li
                 rule=rule,
                 useable=False,
             )
-        )
-
+        if rule:
+            route.proto = rule.type
+        if not route.gateway:
+            route.gateway = modules.routing.get_interface_gateway(route.interface)
+        routes.append(route)
     return routes

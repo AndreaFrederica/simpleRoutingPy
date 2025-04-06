@@ -26,22 +26,30 @@ route_lock = asyncio.Lock()
 # 首次检查完成事件
 first_check_done_event = asyncio.Event()
 
+# 新增：当任意接口状态变化时触发此事件
+interface_change_event = asyncio.Event()
+
+
+#定义退出清理函数
+def exitFunc() -> None:
+    """退出清理函数"""
+    modules.routing.clean()
+
 async def monitor_route(route: RouteEntry, initial_check_event: asyncio.Event):
     """独立监控单个路由的异步任务（增加首次检查事件参数）"""
     try:
-        # 执行首次状态检查
-        # loop = asyncio.get_running_loop()
-        # await loop.run_in_executor(executor, route.check_status)
         await route.check_status()
-        
         # 标记首次检查完成
         initial_check_event.set()
         logger.debug(f"路由 {route.id} 首次检查完成")
-
+        prev_status: bool | None = route.useable  # 保存初始状态
         # 持续监控循环
         while True:
-            # await loop.run_in_executor(executor, route.check_status)
             await route.check_status()
+            if route.useable != prev_status:
+                # 当接口状态发生变化时，触发全局事件
+                interface_change_event.set()
+                prev_status = route.useable
             await asyncio.sleep(1)
     except Exception as e:
         logger.error(f"路由 {route.id} 监控异常: {str(e)}")
@@ -51,8 +59,7 @@ async def monitor_route(route: RouteEntry, initial_check_event: asyncio.Event):
 async def continuous_route_check():
     """启动所有路由的独立监控任务并等待首次检查"""
     global config_routes, route_tasks, route_initial_checks
-    
-    # 创建事件对象集合
+
     check_events = []
 
     async with route_lock:
@@ -63,27 +70,20 @@ async def continuous_route_check():
                 initial_event = asyncio.Event()
                 route_initial_checks[route.id] = initial_event
                 check_events.append(initial_event)
-                
-                # 创建监控任务并传递事件对象
-                task = asyncio.create_task(
-                    monitor_route(route, initial_event)
-                )
+                task = asyncio.create_task(monitor_route(route, initial_event))
                 route_tasks[route.id] = task
                 logger.info(f"已启动路由监控: {route.id}")
 
     # 等待所有路由完成首次检查
     if check_events:
-        await asyncio.gather(
-            *[event.wait() for event in check_events],
-            return_exceptions=True  # 防止单个路由失败阻塞整体
-        )
+        await asyncio.gather(*[event.wait() for event in check_events], return_exceptions=True)
     
     # 触发全局完成事件
     first_check_done_event.set()
 
 async def main_loop():
     """主异步循环"""
-    global config_routes
+    global config_routes, interface_change_event
     logger.info(f"save log file to {config.log_file.file_path_str}")
     logger.info(f"load config from {config.system_config.file_path_str}")
     config_routes = load_route_config()
@@ -98,6 +98,9 @@ async def main_loop():
         logger.info("First check completed. Start applying routes.")
         
         while True:
+            # 控制主循环频率
+            # await asyncio.sleep(1)
+            await interface_change_event.wait()
             # 获取当前路由表
             logger.debug("try get system route table")
             ip_routes = get_ip_route()
@@ -107,8 +110,6 @@ async def main_loop():
             async with route_lock:
                 enable_config_route(ip_routes, config_routes)
             
-            # 控制主循环频率
-            await asyncio.sleep(1)
     except asyncio.CancelledError:
         logger.info("Received exit signal, shutting down...")
     finally:
@@ -120,23 +121,26 @@ async def main_loop():
                 await asyncio.gather(*route_tasks.values())
 
 
-def main():
+def main() -> None:
     logger.info("SimpleRoutingPy loading...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
+    
+    main_task:None|asyncio.Task = None
     try:
         main_task = loop.create_task(main_loop())
         loop.run_forever()
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received, exiting...")
     finally:
-        if not main_task.done():  # type: ignore
-            main_task.cancel()  # type: ignore
-            with suppress(asyncio.CancelledError):
-                loop.run_until_complete(main_task)  # type: ignore
+        if main_task:
+            if not main_task.done():
+                main_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop.run_until_complete(main_task)
         loop.close()
-
+        exitFunc()
+        
 
 if __name__ == "__main__":
     main()

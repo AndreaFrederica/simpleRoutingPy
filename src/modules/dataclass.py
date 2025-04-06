@@ -3,6 +3,7 @@ import re
 import subprocess
 from typing import Optional
 
+from config import config
 import context as context
 from modules.logger import logger
 from modules.ping_ng import PingStats, async_ping_with_return
@@ -63,6 +64,7 @@ class RouteEntry:
             and self.gateway == other.gateway
             and self.interface == other.interface
             and self.metric == other.metric
+            and (True if config.ignore_protocal else (self.proto == other.proto))
         )
 
     def check_status_classic(self) -> bool:

@@ -3,7 +3,8 @@
 **文档采用DeepSeek生成**
 
 > 🛠 项目持续维护中，欢迎提交Issue反馈问题  
-> 📌 已知限制：暂不支持策略路由，复杂场景建议结合FRR使用
+> 📌 已知限制：暂不支持策略路由，复杂场景建议结合FRR使用  
+> 🔔 建议使用pixi或者直接部署整个项目，这样配置最为方便，打包为单文件会损失灵活度，但是目前的描述基本上只写了怎么单文件部署，多文件部署请自行确认
 
 ## 🚀 项目简介
 简单的的动态路由管理方案，通过Ping检测实现多线路故障切换，可替代mwan3。支持OpenWrt等Linux发行版，解决FRR路由套件缺失的链路检测能力。
@@ -38,10 +39,22 @@ opkg install python3 python3-pip
 mkdir -p /etc/config
 ```
 
-### 获取程序
+### 获取程序（单文件部署）
 ```bash
 wget https://github.com/AndreaFrederica/simpleRoutingPy/releases/download/v1.0.1.1/simpleRoutingPy.pyz -O /usr/local/bin/simplerouting
 chmod +x /usr/local/bin/simplerouting
+```
+
+### 获取程序（多文件部署）
+```bash
+git clone https://github.com/AndreaFrederica/simpleRoutingPy.git
+```
+
+### 打包单文件
+```bash
+git clone https://github.com/AndreaFrederica/simpleRoutingPy.git
+pixi install
+pixi run zipapp
 ```
 
 ---
@@ -49,9 +62,15 @@ chmod +x /usr/local/bin/simplerouting
 ## ⚙️ 配置指南
 
 ### 配置文件路径
+#### 已经迁移的配置
 `/etc/config/simplerouting.json`
 
+#### 未迁移的配置
+`/src/config/protocal.py`
+`/src/config/config.py`
+
 ### 配置示例
+#### 已迁移
 ```json
 [
     {
@@ -85,8 +104,7 @@ chmod +x /usr/local/bin/simplerouting
     }
 ]
 ```
-
-### 字段说明
+##### 字段说明
 | 字段         | 必填 | 格式示例           | 说明                          |
 |--------------|------|--------------------|-----------------------------|
 | `id`         | ✔️   | "wan_primary"      | 路由唯一标识（建议英文命名）    |
@@ -96,6 +114,42 @@ chmod +x /usr/local/bin/simplerouting
 | `metric`     | ✔️   | 100                | 路由权重值（值越小优先级越高）  |
 | `priority`   | ✔️   | 1                  | 配置优先级（值越小优先级越高）  |
 | `rule`       | ✔️   | {...}              | 链路检测规则配置               |
+
+#### 未迁移
+`/src/config/protocal.py`
+```python
+#? 程序使用的协议号(缺省值)
+app_protocal:int = 233
+app_protocals:dict[str,int] = {
+    "ping" : 234,
+    "static" : 235,
+}
+#! 最大注册的协议号是254
+#? 核验路由的协议 关闭则会替换系统的路由
+protocal_cheak:bool = True
+```
+`/src/config/config.py`
+```python
+from . import models
+
+
+system_config = models.AppPathResolver(
+    app_name=None,
+    file_name="simplerouting.json",
+    sub_dir="config"
+)
+log_file = models.TemporaryPathResolver(
+    app_name="SimpleRouting",
+    file_name="simplerouting.log",
+    sub_dir="log"
+)
+
+#? 路由验证规则
+ignore_protocal:bool = False
+
+#? 退出时清理路由
+clean_when_exit:bool = False
+```
 
 ---
 
@@ -117,7 +171,7 @@ chmod +x /usr/local/bin/simplerouting
 
 ## 🛠️ 服务化管理
 
-### Systemd服务配置
+### Systemd服务配置（单文件部署）
 创建`/etc/systemd/system/simplerouting.service`：
 ```ini
 [Unit]
