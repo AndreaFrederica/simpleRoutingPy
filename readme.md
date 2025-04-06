@@ -21,6 +21,29 @@
 | **详尽的日志系统**         | 循环日志文件+实时状态监控，支持调试模式                                 |
 
 ---
+## 📝计划
+### 网络协议
+- [x] IPv4
+- [ ] IPv6
+### 路由规则
+- [x] 静态规则
+- [x] ping监测
+- [ ] ospf
+### 路由表
+- [ ] 额外表注入
+- [ ] 路由表分流
+- [x] 自动切换
+- [ ] 比例分流
+### 程序实现
+- [x] 单文件
+- [x] 异步化
+- [ ] Windows支持
+- [ ] 去除ip-route依赖
+### 构建系统和CI
+- [x] Action
+- [x] 一键构建
+- [ ] 第三方依赖自动集成
+---
 
 ## 📦 安装部署
 
@@ -62,15 +85,15 @@ pixi run zipapp
 ## ⚙️ 配置指南
 
 ### 配置文件路径
-#### 已经迁移的配置
+#### 已经集成的配置
 `/etc/config/simplerouting.json`
 
-#### 未迁移的配置
+#### 未集成的配置
 `/src/config/protocal.py`
 `/src/config/config.py`
 
 ### 配置示例
-#### 已迁移
+#### 已集成
 ```json
 [
     {
@@ -104,6 +127,38 @@ pixi run zipapp
     }
 ]
 ```
+```json
+[
+   {
+        "id": "pppoe-wan_ct",
+        "route": "0.0.0.0/0",
+        "port": "pppoe-wan_ct",
+        "metric": 10,
+        "priority": 1,
+        "rule": {
+            "type": "ping",
+            "ping_address": "223.5.5.5",
+            "max_packet_loss": 5.0,
+            "max_latency_ms": 500,
+            "check_interval_sec": 5
+        }
+    },
+    {
+        "id": "pppoe-wan_cm",
+        "route": "0.0.0.0/0",
+        "port": "pppoe-wan_cm",
+        "metric": 10,
+        "priority": 2,
+        "rule": {
+            "type": "ping",
+            "ping_address":"223.5.5.5",
+            "max_packet_loss": 5.0,
+            "max_latency_ms": 500,
+            "check_interval_sec": 5
+        }
+    }
+]
+```
 ##### 字段说明
 | 字段         | 必填 | 格式示例           | 说明                          |
 |--------------|------|--------------------|-----------------------------|
@@ -115,7 +170,7 @@ pixi run zipapp
 | `priority`   | ✔️   | 1                  | 配置优先级（值越小优先级越高）  |
 | `rule`       | ✔️   | {...}              | 链路检测规则配置               |
 
-#### 未迁移
+#### 未集成
 `/src/config/protocal.py`
 ```python
 #? 程序使用的协议号(缺省值)
@@ -125,8 +180,6 @@ app_protocals:dict[str,int] = {
     "static" : 235,
 }
 #! 最大注册的协议号是254
-#? 核验路由的协议 关闭则会替换系统的路由
-protocal_cheak:bool = True
 ```
 `/src/config/config.py`
 ```python
@@ -199,10 +252,11 @@ systemctl enable simplerouting
 
 ## ⚠️ 注意事项
 1. **权限要求**: 必须使用root权限运行（需要修改路由表）
-2. **路由冲突**: 会覆盖非kernel协议的路由（如dhcp生成的）
-3. **检测间隔**: 建议≥3秒，避免系统负载过高
-4. **双栈支持**: 目前仅支持IPv4路由管理
-5. **Ping限制**: 确保`/bin/ping`存在且具有执行权限
+2. **路由冲突**: 在打开`ignore_protocal`时会覆盖非kernel协议的路由（如dhcp生成的）
+3. **检测间隔**: 建议≥0.5秒，避免系统负载过高(其实影响不大 目前使用的是1s 后期会允许配置文件调整)
+4. **双栈支持**: 目前仅支持IPv4路由管理  
+5. ~~**Ping限制**: 确保`/bin/ping`存在且具有执行权限~~(ping已经被ping-ng取代)
+6. **ip route依赖**：目前依赖ip route命令对路由进行操作 后期可能切换到pyroute2接口，老的ip-route接口转为对windows兼容实现（未完成）
 
 ---
 
